@@ -9,49 +9,6 @@ import java.util.Optional;
 
 public class VmAllocator {
 
-    static final class Builder {
-        private int cpuPerProcess;
-        private int numberOfProcesses;
-        private int minimumVMCount = 1;
-        private int cpuOverheadPerVm = 0;
-
-        public Builder cpuPerProcess(int cpuPerProcess) {
-            if (cpuPerProcess <= 0) {
-                throw new IllegalArgumentException("cpuPerProcess must be greater than 0");
-            }
-            this.cpuPerProcess = cpuPerProcess;
-            return this;
-        }
-
-        public Builder numberOfProcesses(int numberOfProcesses) {
-            if(numberOfProcesses <= 0) {
-                throw new IllegalArgumentException("numberOfProcesses must be greater than 0");
-            }
-            this.numberOfProcesses = numberOfProcesses;
-            return this;
-        }
-
-        public Builder minimumVMCount(int minimumVMCount) {
-            if (minimumVMCount <= 0) {
-                throw new IllegalArgumentException("minimumVMCount must be greater than 0");
-            }
-            this.minimumVMCount = minimumVMCount;
-            return this;
-        }
-
-        public Builder cpuOverheadPerVm(int cpuOverheadPerVm) {
-            if (cpuOverheadPerVm < 0) {
-                throw new IllegalArgumentException("cpuOverheadPerVm cannot be negative");
-            }
-            this.cpuOverheadPerVm = cpuOverheadPerVm;
-            return this;
-        }
-
-        public VmAllocator build() {
-            return new VmAllocator(this);
-        }
-    }
-
     private Map<VmType, List<AllocationInfo>> allocationsCache = new HashMap<>();
     private Builder config;
 
@@ -129,6 +86,50 @@ public class VmAllocator {
 
         // Find one with most amount of VMs for best resiliency
         return allocations.stream().min(comparator);
+    }
+
+    // Builder pattern
+    static final class Builder {
+        private int cpuPerProcess;
+        private int numberOfProcesses;
+        private int minimumVMCount = 1;
+        private int cpuOverheadPerVm = 0;
+
+        public Builder cpuPerProcess(int cpuPerProcess) {
+            if (cpuPerProcess <= 0) {
+                throw new IllegalArgumentException("cpuPerProcess must be greater than 0");
+            }
+            this.cpuPerProcess = cpuPerProcess;
+            return this;
+        }
+
+        public Builder numberOfProcesses(int numberOfProcesses) {
+            if(numberOfProcesses <= 0) {
+                throw new IllegalArgumentException("numberOfProcesses must be greater than 0");
+            }
+            this.numberOfProcesses = numberOfProcesses;
+            return this;
+        }
+
+        public Builder minimumVMCount(int minimumVMCount) {
+            if (minimumVMCount <= 0) {
+                throw new IllegalArgumentException("minimumVMCount must be greater than 0");
+            }
+            this.minimumVMCount = minimumVMCount;
+            return this;
+        }
+
+        public Builder cpuOverheadPerVm(int cpuOverheadPerVm) {
+            if (cpuOverheadPerVm < 0) {
+                throw new IllegalArgumentException("cpuOverheadPerVm cannot be negative");
+            }
+            this.cpuOverheadPerVm = cpuOverheadPerVm;
+            return this;
+        }
+
+        public VmAllocator build() {
+            return new VmAllocator(this);
+        }
     }
 
 }
