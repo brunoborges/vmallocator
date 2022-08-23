@@ -1,62 +1,134 @@
 package org.helder;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 public class VmAllocator {
 
-    private int minimumVMCount;
-    private int cpuPerJVM;
-    private int cpuOverheadPerVm;
-    private int numberOfJVMs;
+    static final class Builder {
+        private int cpuPerProcess;
+        private int numberOfProcesses;
+        private int minimumVMCount = 1;
+        private int cpuOverheadPerVm = 0;
 
-    public VmAllocator(int cpuPerJVM, int numberOfJVMs, int cpuOverheadPerVm, int minimumVMCount) {
-        this.minimumVMCount = minimumVMCount;
-        this.cpuPerJVM = cpuPerJVM;
-        this.numberOfJVMs = numberOfJVMs;
-        this.cpuOverheadPerVm = cpuOverheadPerVm;
-        this.minimumVMCount = minimumVMCount;
+        public Builder cpuPerProcess(int cpuPerProcess) {
+            if (cpuPerProcess <= 0) {
+                throw new IllegalArgumentException("cpuPerProcess must be greater than 0");
+            }
+            this.cpuPerProcess = cpuPerProcess;
+            return this;
+        }
+
+        public Builder numberOfProcesses(int numberOfProcesses) {
+            if(numberOfProcesses <= 0) {
+                throw new IllegalArgumentException("numberOfProcesses must be greater than 0");
+            }
+            this.numberOfProcesses = numberOfProcesses;
+            return this;
+        }
+
+        public Builder minimumVMCount(int minimumVMCount) {
+            if (minimumVMCount <= 0) {
+                throw new IllegalArgumentException("minimumVMCount must be greater than 0");
+            }
+            this.minimumVMCount = minimumVMCount;
+            return this;
+        }
+
+        public Builder cpuOverheadPerVm(int cpuOverheadPerVm) {
+            if (cpuOverheadPerVm < 0) {
+                throw new IllegalArgumentException("cpuOverheadPerVm cannot be negative");
+            }
+            this.cpuOverheadPerVm = cpuOverheadPerVm;
+            return this;
+        }
+
+        public VmAllocator build() {
+            return new VmAllocator(this);
+        }
     }
 
-    public AllocationInfo allocate(int vmSize) {
-        int allocatableCPUs = vmSize - cpuOverheadPerVm;
-        int requestedCPUsPerVm = (int) Math.floor((double) allocatableCPUs / cpuPerJVM) * cpuPerJVM;
-        int totalCPUs = numberOfJVMs * cpuPerJVM;
+    private Map<VmType, List<AllocationInfo>> allocationsCache = new HashMap<>();
+    private Builder config;
 
-        int numberOfVms = (int) Math.max(minimumVMCount,
-                Math.ceil(
-                        Math.ceil((double) requestedCPUsPerVm / allocatableCPUs) * ((double) totalCPUs / requestedCPUsPerVm)));
-        int billableCPUs = numberOfVms * vmSize;
-        int idleCPUs = billableCPUs - totalCPUs;
-        double wasteRate = 100.0 * (double) idleCPUs / (numberOfVms * vmSize);
-
-        return new AllocationInfo(vmSize, allocatableCPUs, requestedCPUsPerVm, idleCPUs, numberOfVms, wasteRate);
+    private VmAllocator(Builder data) {
+        this.config = data;
     }
 
-    public AllocationInfo findBestAllocationByRedundancy(List<AllocationInfo> infos) {
-        return infos.stream().sorted(getComparatorByRedundancy()).findFirst().orElse(null);
+    public List<AllocationInfo> allocate(VmType vmType) {
+        if (vmType == null) {
+            throw new IllegalArgumentException("vmType cannot be null");
+        }
+
+        if (allocationsCache.containsKey(vmType)) {
+            return allocationsCache.get(vmType);
+        }
+
+        var vmSizes = vmType.sizes();
+        var allocations = new ArrayList<AllocationInfo>();
+
+        for (int vmSize : vmSizes) {
+            // Skip sizes that can't hold the number of CPUs per processor plus CPU overhead
+            if (vmSize < config.cpuPerProcess + config.cpuOverheadPerVm) {
+                continue;
+            }
+
+            // Find how many CPUs are available for allocation per VM
+            int allocatableCPUsPerVM = vmSize - config.cpuOverheadPerVm;
+
+            // Find how many CPUs per VM are needed to allocate as many processes as
+            // possible.
+            // If the number of processes is not a multiple of the number of CPUs per VM,
+            // then the number of CPUs per VM will be rounded down to the closest integer.
+            // This results in "wasted" CPUs that are not allocated to any process. More
+            // below.
+            int requestedCPUsPerVM = (int) Math.floor((double) allocatableCPUsPerVM / config.cpuPerProcess)
+                    * config.cpuPerProcess;
+
+            // Find how many CPUs will actually be consumed by all processes
+            int totalConsumedCPUs = config.numberOfProcesses * config.cpuPerProcess;
+
+            // Now that we know how many CPUs per VM are needed, we can calculate how many
+            // VMs are needed. We must round up to the closest integer to ensure that we
+            // have enough VMs to allocate all processes.
+            int numberOfVms = (int) Math.ceil(
+                    Math.ceil((double) requestedCPUsPerVM / allocatableCPUsPerVM)
+                            * (double) totalConsumedCPUs / requestedCPUsPerVM);
+
+            // If the number of VMs is less than the minimum, set it to the minimum
+            numberOfVms = (int) Math.max(config.minimumVMCount, numberOfVms);
+
+            // But no matter what, the total amount of CPUs across all VMs will still be
+            // billable
+            int billableCPUs = numberOfVms * vmSize;
+
+            // Then we can calculate how many CPUs will always be idle
+            int idleCPUs = billableCPUs - totalConsumedCPUs;
+
+            // And finally, we can calculate the waste rate
+            double wasteRate = 100.0 * (double) idleCPUs / (numberOfVms * vmSize);
+
+            // Add the allocation info to the list
+            allocations.add(new AllocationInfo(vmSize, allocatableCPUsPerVM, requestedCPUsPerVM, idleCPUs, numberOfVms,
+                    billableCPUs, wasteRate));
+        }
+
+        allocationsCache.put(vmType, allocations);
+
+        return allocations;
     }
 
-    public AllocationInfo findBestAllocationByWasteRate(List<AllocationInfo> infos) {
-        return infos.stream().sorted(getComparatorByWasteRate()).findFirst().orElse(null);
-    }
+    public Optional<AllocationInfo> findBestAllocation(VmType vmType) {
+        var allocations = allocate(vmType);
+        var comparator = Comparator.comparingDouble(AllocationInfo::billableCPUs)
+                .thenComparingInt(AllocationInfo::vmSize);
 
-    public Comparator<AllocationInfo> getComparatorByWasteRate() {
-        return (AllocationInfo info1, AllocationInfo info2) -> {
-            // first, we prioritize fewer wasted CPUs (to reduce costs)
-            double wasted = info1.wastedCPUs() - info2.wastedCPUs();
-
-            return (int) wasted;
-        };
-    }
-
-    public Comparator<AllocationInfo> getComparatorByRedundancy() {
-        return (AllocationInfo info1, AllocationInfo info2) -> {
-            // second, we prioritize more VMs (for increased redundancy)
-            int vms = info2.numberOfVms() - info1.numberOfVms();
-
-            return vms;
-        };
+        // Find one with most amount of VMs for best resiliency
+        return allocations.stream().min(comparator);
     }
 
 }

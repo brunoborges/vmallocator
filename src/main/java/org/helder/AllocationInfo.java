@@ -4,7 +4,8 @@ public record AllocationInfo(
         int vmSize,
         int allocatableCPUs,
         int requestedCPUsPerVm,
-        int wastedCPUs,
+        int idleCPUs,
         int numberOfVms,
+        int billableCPUs,
         double wasteRate) {
 }

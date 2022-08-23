@@ -1,46 +1,36 @@
 package org.helder;
 
-import java.util.Arrays;
+import java.math.BigDecimal;
 
 public class Main {
 
     public static void main(String[] args) {
-        // Inputs:
-        var vmSizes = Arrays.asList(4, 8, 16, 32, 48, 64);
-        int cpuPerJVM = 2;
-        int numberOfJVMs = 16;
-        int minimumVMCount = 1;
-        int cpuOverheadPerVm = 1;
+        // Example of Azure D3 Compute Type
+        var d3vm = new VmType("D3", new BigDecimal("0.0585"), new int[] { 2, 4, 8, 16, 32, 48, 64 });
 
-        System.out.println("Number of JVMs: " + numberOfJVMs);
-        System.out.println("CPUs per JVMs: " + cpuPerJVM);
-        System.out.println("\nAllocation analysis:");
+        // Input data
+        int cpuPerProcess = 2;
+        int numberOfProcesses = 64;
 
-        var vmAllocator = new VmAllocator(cpuPerJVM, numberOfJVMs, cpuOverheadPerVm, minimumVMCount);
+        System.out.printf("\nNumber of Processes: %s", numberOfProcesses);
+        System.out.printf("\nCPUs per Process: %s", cpuPerProcess);
 
-        for (int vmSize : vmSizes) {
-            var info = vmAllocator.allocate(vmSize);
-            System.out.println(info);
-        }
+        var vmAllocator = new VmAllocator.Builder()
+                .cpuPerProcess(cpuPerProcess)
+                .numberOfProcesses(numberOfProcesses)
+                .minimumVMCount(1)
+                .cpuOverheadPerVm(1)
+                .build();
+        var allocations = vmAllocator.allocate(d3vm);
+
+        System.out.println("\n\nAllocation analysis:");
+        allocations.forEach(System.out::println);
 
         // Find best allocation by waste rate
-        System.out.println("\nBest allocation by waste rate:");
-        vmSizes.stream().map(vmAllocator::allocate).sorted(vmAllocator.getComparatorByWasteRate()).findFirst().ifPresent(System.out::println);
+        System.out.println("\nBest allocation: ");
 
-        // Find best allocation by redundancy
-        System.out.println("\nBest allocation by redundancy:");
-        vmSizes.stream().map(vmAllocator::allocate).sorted(vmAllocator.getComparatorByRedundancy()).findFirst().ifPresent(System.out::println);
-
-        /* 
-        for (AllocationInfo info : allocationAlternatives) {
-            System.out.println(
-                    "Number of JVMs: " + numberOfJVMs +
-                    ", VM CPUs = " + info.vmSize() +
-                    ", # of VMs required = " + info.numberOfVms() +
-                    ", wasted CPUs = " + info.wastedCPUs() +
-                    ", waste rate = " + info.wasteRate() + "%");
-        }
-        */
+        vmAllocator.findBestAllocation(d3vm).ifPresentOrElse(System.out::println,
+                () -> System.out.println("No good allocation found."));
     }
 
 }
