@@ -10,7 +10,7 @@ public class Main {
 
         // Input data
         int cpuPerProcess = 2;
-        int numberOfProcesses = 64;
+        int numberOfProcesses = 16;
 
         System.out.printf("\nNumber of Processes: %s", numberOfProcesses);
         System.out.printf("\nCPUs per Process: %s", cpuPerProcess);
