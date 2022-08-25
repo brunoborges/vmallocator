@@ -1,5 +1,6 @@
-package org.helder;
+package org.vmallocator;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -7,16 +8,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-public class VmAllocator {
+public class VMAllocator {
 
-    private Map<VmType, List<AllocationInfo>> allocationsCache = new HashMap<>();
+    private Map<VMType, List<AllocationInfo>> allocationsCache = new HashMap<>();
     private Builder config;
 
-    private VmAllocator(Builder data) {
+    private VMAllocator(Builder data) {
         this.config = data;
     }
 
-    public List<AllocationInfo> allocate(VmType vmType) {
+    public List<AllocationInfo> allocate(VMType vmType) {
         if (vmType == null) {
             throw new IllegalArgumentException("vmType cannot be null");
         }
@@ -52,26 +53,26 @@ public class VmAllocator {
             // Now that we know how many CPUs per VM are needed, we can calculate how many
             // VMs are needed. We must round up to the closest integer to ensure that we
             // have enough VMs to allocate all processes.
-            int numberOfVms = (int) Math.ceil(
+            int numberOfVMs = (int) Math.ceil(
                     Math.ceil((double) requestedCPUsPerVM / allocatableCPUsPerVM)
                             * (double) totalConsumedCPUs / requestedCPUsPerVM);
 
             // If the number of VMs is less than the minimum, set it to the minimum
-            numberOfVms = (int) Math.max(config.minimumVMCount, numberOfVms);
+            numberOfVMs = (int) Math.max(config.minimumVMCount, numberOfVMs);
 
             // But no matter what, the total amount of CPUs across all VMs will still be
             // billable
-            int billableCPUs = numberOfVms * vmSize;
+            int totalBillableCPUs = numberOfVMs * vmSize;
 
             // Then we can calculate how many CPUs will always be idle
-            int idleCPUs = billableCPUs - totalConsumedCPUs;
+            int totalIdleCPUs = totalBillableCPUs - totalConsumedCPUs;
 
-            // And finally, we can calculate the waste rate
-            double wasteRate = 100.0 * (double) idleCPUs / (numberOfVms * vmSize);
+            var totalCostPerHour = vmType.costPerCPU().multiply(BigDecimal.valueOf(totalBillableCPUs));
 
             // Add the allocation info to the list
-            allocations.add(new AllocationInfo(vmSize, allocatableCPUsPerVM, requestedCPUsPerVM, idleCPUs, numberOfVms,
-                    billableCPUs, wasteRate));
+            allocations.add(
+                    new AllocationInfo(vmSize, numberOfVMs, allocatableCPUsPerVM, requestedCPUsPerVM, totalIdleCPUs,
+                            totalBillableCPUs, totalCostPerHour));
         }
 
         allocationsCache.put(vmType, allocations);
@@ -79,12 +80,12 @@ public class VmAllocator {
         return allocations;
     }
 
-    public Optional<AllocationInfo> findBestAllocation(VmType vmType) {
+    public Optional<AllocationInfo> findBestAllocation(VMType vmType) {
         var allocations = allocate(vmType);
-        var comparator = Comparator.comparingDouble(AllocationInfo::billableCPUs)
+        var comparator = Comparator.comparingDouble(AllocationInfo::totalBillableCPUs)
                 .thenComparingInt(AllocationInfo::vmSize);
 
-        // Find one with most amount of VMs for best resiliency
+        // Find one with minimal amount of billable CPUs and the smallest VM size, for best resiliency
         return allocations.stream().min(comparator);
     }
 
@@ -104,7 +105,7 @@ public class VmAllocator {
         }
 
         public Builder numberOfProcesses(int numberOfProcesses) {
-            if(numberOfProcesses <= 0) {
+            if (numberOfProcesses <= 0) {
                 throw new IllegalArgumentException("numberOfProcesses must be greater than 0");
             }
             this.numberOfProcesses = numberOfProcesses;
@@ -127,8 +128,8 @@ public class VmAllocator {
             return this;
         }
 
-        public VmAllocator build() {
-            return new VmAllocator(this);
+        public VMAllocator build() {
+            return new VMAllocator(this);
         }
     }
 
