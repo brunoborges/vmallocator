@@ -36,7 +36,7 @@ public class VMAllocator {
             }
 
             // Find how many CPUs are available for allocation per VM
-            int allocatableCPUsPerVM = vmSize - config.cpuOverheadPerVm;
+            double allocatableCPUsPerVM = vmSize - config.cpuOverheadPerVm;
 
             // Find how many CPUs per VM are needed to allocate as many processes as
             // possible.
@@ -94,7 +94,7 @@ public class VMAllocator {
         private int cpuPerProcess;
         private int numberOfProcesses;
         private int minimumVMCount = 1;
-        private int cpuOverheadPerVm = 0;
+        private double cpuOverheadPerVm = 0;
 
         public Builder cpuPerProcess(int cpuPerProcess) {
             if (cpuPerProcess <= 0) {
@@ -120,7 +120,7 @@ public class VMAllocator {
             return this;
         }
 
-        public Builder cpuOverheadPerVm(int cpuOverheadPerVm) {
+        public Builder cpuOverheadPerVm(double cpuOverheadPerVm) {
             if (cpuOverheadPerVm < 0) {
                 throw new IllegalArgumentException("cpuOverheadPerVm cannot be negative");
             }
